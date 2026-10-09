@@ -149,23 +149,28 @@ app.MapGet("/api/orders/user/{userId}", async (ClothingShopContext context, int 
     return Results.Json(orders);
 });
 
+//зарегистрировать нового пользовател€
 
+app.MapPost("/api/auth/login", async (ClothingShopContext context, LoginRequest request, IPasswordHasher<User> hasher) =>
+{
+    var user = await context.Users.Include(a => a.Role).FirstOrDefaultAsync(a => a.Login == request.Login);
 
+    if (user == null ||
+        string.IsNullOrWhiteSpace(request.Password))
+        return Results.Challenge();
 
+    var result = hasher.VerifyHashedPassword(
+        user, user.PasswordHash, request.Password);
 
-//app.MapDelete("/api/users/{id}", async (ClothingShopContext context, int id) =>
-//{
-//    // получаем пользовател€ по id
-//    User? user = context.Users.FirstOrDefault(u => u.Id == id);
+    if (result == PasswordVerificationResult.Failed)
+        return Results.Challenge();
 
-//    // если не найден, отправл€ем статусный код и сообщение об ошибке
-//    if (user == null) return Results.NotFound(new { message = "ѕользователь не найден" });
-
-//    // если пользователь найден, удал€ем его
-//    context.Users.Remove(user);
-//    await context.SaveChangesAsync();
-//    return Results.Json(user);
-//});
+    return Results.Ok(new
+    {
+        access_token = CreateToken(user),
+        token_type = "Bearer"
+    });
+}).AllowAnonymous();
 
 //изменить статус существующего заказа
 
@@ -190,28 +195,72 @@ app.MapPut("/api/orders/{id}/status", async (ClothingShopContext context, int id
     });
 });
 
-//зарегистрировать нового пользовател€
-
-app.MapPost("/api/auth/login", async (ClothingShopContext context, LoginRequest request, IPasswordHasher<User> hasher) =>
+//изменить количество товара определЄнного размера
+                 //order-items
+app.MapPut("/api/orderitems/{id}/quantity", async (ClothingShopContext context, int id, UpdateQuantity uq) =>
 {
-    var user = await context.Users.Include(a => a.Role).FirstOrDefaultAsync(a => a.Login == request.Login);
+    var item = await context.OrderItems.FirstOrDefaultAsync(i => i.Id == id);
+    if (item is null)
+        return Results.NotFound(new { message = "ѕозици€ заказа не найдена" });
 
-    if (user == null ||
-        string.IsNullOrWhiteSpace(request.Password))
-        return Results.Challenge();
+    if (uq.Quantity <= 0)
+        return Results.BadRequest(new { message = " оличество должно быть больше 0" });
 
-    var result = hasher.VerifyHashedPassword(
-        user, user.PasswordHash, request.Password);
+    item.Quantity = uq.Quantity;
+    await context.SaveChangesAsync();
 
-    if (result == PasswordVerificationResult.Failed)
-        return Results.Challenge();
-
-    return Results.Ok(new
+    return Results.Json(new
     {
-        access_token = CreateToken(user),
-        token_type = "Bearer"
+        item.Id,
+        item.OrderId,
+        item.ClothingSizeId,
+        item.Quantity,
+        item.UnitPrice
     });
-}).AllowAnonymous();
+});
+
+//убрать товар из продажи
+
+app.MapDelete("/api/closing/{id}", async (ClothingShopContext context, int id) =>
+{
+    var clothing = await context.Clothings.FirstOrDefaultAsync(c => c.Id == id);
+    if (clothing is null)
+        return Results.NotFound(new { message = "“овар не найден" });
+
+    if (!clothing.IsAvailable)
+        return Results.BadRequest(new { message = "“овар уже сн€т с продажи" });
+    clothing.IsAvailable = false;
+    await context.SaveChangesAsync();
+
+    return Results.Json(new
+    {
+        clothing.Id,
+        clothing.Name,
+        clothing.IsAvailable
+    });
+});
+
+//вернуть товар в продажу;
+
+app.MapPut("/api/clothing/{id}/restore", async (ClothingShopContext context, int id) =>
+{
+    var clothing = await context.Clothings.FirstOrDefaultAsync(c => c.Id == id);
+    if (clothing is null)
+        return Results.NotFound(new { message = "“овар не найден" });
+
+    if (clothing.IsAvailable)
+        return Results.BadRequest(new { message = "“овар уже в продаже" });
+
+    clothing.IsAvailable = true;
+    await context.SaveChangesAsync();
+
+    return Results.Json(new
+    {
+        clothing.Id,
+        clothing.Name,
+        clothing.IsAvailable
+    });
+});
 
 app.Run();
 
