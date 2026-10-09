@@ -1,12 +1,54 @@
 using ClothShop;
 using ClothShop.Models;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.IdentityModel.Tokens;
+using System.IdentityModel.Tokens.Jwt;
+using System.Security.Claims;
+using System.Security.Cryptography;
 
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddDbContext<ClothingShopContext>();
 
+var key = new SymmetricSecurityKey(
+    RandomNumberGenerator.GetBytes(32));
+
+var validation = new TokenValidationParameters
+{
+    ValidateIssuer = true,
+    ValidIssuer = "JwtDemo",
+
+    ValidateAudience = true,
+    ValidAudience = "JwtDemoApi",
+
+    ValidateIssuerSigningKey = true,
+    IssuerSigningKey = key,
+
+    ValidateLifetime = true,
+    ClockSkew = TimeSpan.Zero,
+
+    NameClaimType = "name",
+    RoleClaimType = "role"
+};
+
+builder.Services
+    .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddJwtBearer(options =>
+    {
+        options.MapInboundClaims = false;
+        options.TokenValidationParameters = validation;
+    });
+
+builder.Services.AddAuthorization();
+
+
+
 var app = builder.Build();
+
+app.UseAuthentication();
+app.UseAuthorization();
 
 //Вывод списка всей одежды в http://localhost:5072/api/closing/
 
@@ -108,6 +150,9 @@ app.MapGet("/api/orders/user/{userId}", async (ClothingShopContext context, int 
 });
 
 
+
+
+
 //app.MapDelete("/api/users/{id}", async (ClothingShopContext context, int id) =>
 //{
 //    // получаем пользователя по id
@@ -122,22 +167,71 @@ app.MapGet("/api/orders/user/{userId}", async (ClothingShopContext context, int 
 //    return Results.Json(user);
 //});
 
+//изменить статус существующего заказа
 
+app.MapPut("/api/orders/{id}/status", async (ClothingShopContext context, int id, UpdateOrderStat uos) =>
+{
+    var order = context.Orders.FirstOrDefault(o => o.Id == id);
+    if (order == null) return Results.NotFound(new { message = "Заказ не найден" });
 
-//app.MapPut("/api/users", async (UserDbContext context, User userData) => {
-//    // получаем пользователя по id
-//    var user = context.Users.FirstOrDefault(u => u.Id == userData.Id);
-//    // если не найден, отправляем статусный код и сообщение об ошибке
-//    if (user == null) return Results.NotFound(new { message = "Пользователь не найден" });
+    var statusExists = await context.OrderStatuses.AnyAsync(s => s.Id == uos.StatusId);
+    if (!statusExists)
+        return Results.BadRequest(new { message = "Такого статуса не существует" });
 
-//    // если пользователь найден, изменяем его данные и отправляем обратно клиенту
-//    user.LastName = userData.LastName;
-//    user.FirstName = userData.FirstName;
-//    user.MiddleName = userData.MiddleName;
-//    await context.SaveChangesAsync();
-//    return Results.Json(user);
-//});
+    order.StatusId = uos.StatusId;
+    await context.SaveChangesAsync();
 
+    return Results.Json(new
+    {
+        order.Id,
+        order.CreatedAt,
+        order.StatusId,
+        order.UserId
+    });
+});
 
+//зарегистрировать нового пользователя
+
+app.MapPost("/api/auth/login", async (ClothingShopContext context, LoginRequest request, IPasswordHasher<User> hasher) =>
+{
+    var user = await context.Users.Include(a => a.Role).FirstOrDefaultAsync(a => a.Login == request.Login);
+
+    if (user == null ||
+        string.IsNullOrWhiteSpace(request.Password))
+        return Results.Challenge();
+
+    var result = hasher.VerifyHashedPassword(
+        user, user.PasswordHash, request.Password);
+
+    if (result == PasswordVerificationResult.Failed)
+        return Results.Challenge();
+
+    return Results.Ok(new
+    {
+        access_token = CreateToken(user),
+        token_type = "Bearer"
+    });
+}).AllowAnonymous();
 
 app.Run();
+
+string CreateToken(User user)
+{
+    var claims = new[]
+    {
+        new Claim("sub", user.Id.ToString()),
+        new Claim("name", user.Login),
+        new Claim("role", user.Role.Name)
+    };
+
+    var token = new JwtSecurityToken(
+        issuer: "JwtDemo",
+        audience: "JwtDemoApi",
+        claims: claims,
+        expires: DateTime.UtcNow.AddMinutes(15),
+        signingCredentials: new SigningCredentials(
+            key, SecurityAlgorithms.HmacSha256));
+
+    return new JwtSecurityTokenHandler().WriteToken(token);
+}
+
