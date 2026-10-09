@@ -1,0 +1,86 @@
+﻿{
+   "CodeGenerationMode": 4,
+   "ContextClassName": "ClothingShopContext",
+   "ContextNamespace": null,
+   "FilterSchemas": false,
+   "IncludeConnectionString": true,
+   "IrregularWords": null,
+   "MinimumProductVersion": "2.6.1706",
+   "ModelNamespace": null,
+   "OutputContextPath": null,
+   "OutputPath": "Models",
+   "PluralRules": null,
+   "PreserveCasingWithRegex": true,
+   "ProjectRootNamespace": "ClothShop",
+   "Schemas": null,
+   "SelectedHandlebarsLanguage": 2,
+   "SelectedToBeGenerated": 0,
+   "SingularRules": null,
+   "T4TemplatePath": null,
+   "Tables": [
+      {
+         "Name": "[dbo].[clothing]",
+         "ObjectType": 0
+      },
+      {
+         "Name": "[dbo].[clothing_sizes]",
+         "ObjectType": 0
+      },
+      {
+         "Name": "[dbo].[clothing_types]",
+         "ObjectType": 0
+      },
+      {
+         "Name": "[dbo].[order_items]",
+         "ObjectType": 0
+      },
+      {
+         "Name": "[dbo].[order_statuses]",
+         "ObjectType": 0
+      },
+      {
+         "Name": "[dbo].[orders]",
+         "ObjectType": 0
+      },
+      {
+         "Name": "[dbo].[roles]",
+         "ObjectType": 0
+      },
+      {
+         "Name": "[dbo].[sizes]",
+         "ObjectType": 0
+      },
+      {
+         "Name": "[dbo].[users]",
+         "ObjectType": 0
+      }
+   ],
+   "UiHint": null,
+   "UncountableWords": null,
+   "UseAsyncStoredProcedureCalls": true,
+   "UseBoolPropertiesWithoutDefaultSql": false,
+   "UseDatabaseNames": false,
+   "UseDatabaseNamesForRoutines": true,
+   "UseDateOnlyTimeOnly": true,
+   "UseDbContextSplitting": false,
+   "UseDecimalDataAnnotationForSprocResult": true,
+   "UseFluentApiOnly": true,
+   "UseHandleBars": false,
+   "UseHierarchyId": false,
+   "UseInflector": true,
+   "UseInternalAccessModifiersForSprocsAndFunctions": false,
+   "UseLegacyPluralizer": false,
+   "UseManyToManyEntity": false,
+   "UseNoDefaultConstructor": false,
+   "UseNoNavigations": false,
+   "UseNoObjectFilter": false,
+   "UseNodaTime": false,
+   "UseNullableReferences": false,
+   "UsePrefixNavigationNaming": false,
+   "UseSchemaFolders": false,
+   "UseSchemaNamespaces": false,
+   "UseSpatial": false,
+   "UseT4": false,
+   "UseT4Split": false,
+   "UseTypedTvpParameters": true
+}
