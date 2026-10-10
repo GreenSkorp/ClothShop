@@ -199,7 +199,7 @@ app.MapPost("/api/auth/login", async (ClothingShopContext context, LoginRequest 
         access_token = CreateToken(user),
         token_type = "Bearer"
     });
-});
+}).AllowAnonymous();
 
 //Регистрация пользователя
 
@@ -246,7 +246,7 @@ app.MapPut("/api/orders/{id}/status", async (ClothingShopContext context, int id
         order.StatusId,
         order.UserId
     });
-}).RequireAuthorization("Manager");
+}).RequireAuthorization(policy => policy.RequireAuthenticatedUser().RequireRole("Manager"));
 
 //изменить количество товара определённого размера
 //order-items
@@ -270,11 +270,11 @@ app.MapPut("/api/orderitems/{id}/quantity", async (ClothingShopContext context, 
         item.Quantity,
         item.UnitPrice
     });
-}).RequireAuthorization("Manager");
+}).RequireAuthorization(policy => policy.RequireAuthenticatedUser().RequireRole("Manager"));
 
 //убрать товар из продажи
 
-app.MapDelete("/api/closing/{id}", async (ClothingShopContext context, int id) =>
+app.MapDelete("/api/closing/{id}", async (ClothingShopContext context, int id, ClaimsPrincipal user) =>
 {
     var clothing = await context.Clothings.FirstOrDefaultAsync(c => c.Id == id);
     if (clothing is null)
@@ -291,7 +291,7 @@ app.MapDelete("/api/closing/{id}", async (ClothingShopContext context, int id) =
         clothing.Name,
         clothing.IsAvailable
     });
-}).RequireAuthorization("Manager");
+}).RequireAuthorization(policy => policy.RequireAuthenticatedUser().RequireRole("Manager"));
 
 //вернуть товар в продажу;
 
@@ -313,7 +313,7 @@ app.MapPut("/api/clothing/{id}/restore", async (ClothingShopContext context, int
         clothing.Name,
         clothing.IsAvailable
     });
-}).RequireAuthorization("Manager");
+}).RequireAuthorization(policy => policy.RequireAuthenticatedUser().RequireRole("Manager"));
 
 app.Run();
 
