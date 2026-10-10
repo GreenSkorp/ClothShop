@@ -7,10 +7,18 @@ using Microsoft.IdentityModel.Tokens;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Security.Cryptography;
+using System.Text.Json.Serialization;
 
 var builder = WebApplication.CreateBuilder(args);
 
+builder.Services.ConfigureHttpJsonOptions(options =>
+{
+    options.SerializerOptions.ReferenceHandler = ReferenceHandler.IgnoreCycles;
+});
+
 builder.Services.AddDbContext<ClothingShopContext>();
+
+
 
 var key = new SymmetricSecurityKey(
     RandomNumberGenerator.GetBytes(32));
@@ -32,7 +40,7 @@ var validation = new TokenValidationParameters
     NameClaimType = "name",
     RoleClaimType = "role"
 };
-
+ClothingShopContext context = new ClothingShopContext();
 builder.Services
     .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
@@ -43,7 +51,15 @@ builder.Services
 
 builder.Services.AddAuthorization();
 
+var hasher = new PasswordHasher<User>();
 
+List<User> accounts = context.Users.ToList();
+
+
+foreach (var account in accounts)
+{
+    account.PasswordHash = hasher.HashPassword(account, account.PasswordHash);
+}
 
 var app = builder.Build();
 
@@ -66,14 +82,14 @@ app.MapGet("/api/closing/{name}", async (ClothingShopContext context, string nam
 
 //ѕо идее создаЄт новый заказ
 
-app.MapPost("/api/orders", async (ClothingShopContext context, CreateOrder co) =>
+app.MapPost("/api/orders", async (ClothingShopContext context, CreateOrder co, ClaimsPrincipal user) =>
 {
-    int userId = 1; // заглушка, после авторизации будет учитыватьс€ юзер
+    //int userId = 1; // заглушка, после авторизации будет учитыватьс€ юзер
     var neworder = new Order
     {
         CreatedAt = DateTime.Now,
         StatusId = await context.OrderStatuses.Where(s => s.Name == "—оздан").Select(s => s.Id).FirstAsync(),
-        UserId = userId,
+        UserId = Convert.ToInt32(user.FindFirst("sub").Value),
         OrderItems = co.ItemsInOrder.Select(x => new OrderItem
         {
             ClothingSizeId = x.ClothingSizeId,
@@ -99,11 +115,26 @@ app.MapPost("/api/orders", async (ClothingShopContext context, CreateOrder co) =
             i.UnitPrice
         })
     });
-});
+}).RequireAuthorization();
+
+//app.MapGet("/hash", (ClothingShopContext context) =>
+//{
+//    foreach (var user in context.Users.ToList())
+//    {
+//        user.PasswordHash = hasher.HashPassword(user, user.PasswordHash);
+//    }
+
+//    context.SaveChanges();
+//    return Results.Ok(new
+//    {
+//        access_token = CreateToken(context.Users.First(i => i.Id == 1)),
+//        token_type = "Bearer"
+//    });
+//}).AllowAnonymous();
 
 //ѕолучает список заказов определЄнного статуса
 
-app.MapGet("/api/orders", async (ClothingShopContext context, int statusId) =>
+app.MapGet("/api/orders/{statusId}", async (ClothingShopContext context, int statusId) =>
 {
     var orders = await context.Orders.Where(x => x.StatusId == statusId).Include(x => x.OrderItems).Select(x => new
     {
@@ -121,14 +152,14 @@ app.MapGet("/api/orders", async (ClothingShopContext context, int statusId) =>
     }).ToListAsync();
 
     return Results.Json(orders);
-});
+}).RequireAuthorization();
 
 //ѕолучает список заказов определЄнного покупател€
 
-app.MapGet("/api/orders/user/{userId}", async (ClothingShopContext context, int userId) =>
+app.MapGet("/api/orders/", async (ClothingShopContext context, ClaimsPrincipal user) =>
 {
     var orders = await context.Orders
-        .Where(o => o.UserId == userId)
+        .Where(o => o.User.Login == user.Identity.Name)
         .Include(o => o.OrderItems)
         .Select(o => new
         {
@@ -147,20 +178,18 @@ app.MapGet("/api/orders/user/{userId}", async (ClothingShopContext context, int 
         .ToListAsync();
 
     return Results.Json(orders);
-});
+}).RequireAuthorization();
 
-//зарегистрировать нового пользовател€
+//јвторизаци€ пользовател€
 
-app.MapPost("/api/auth/login", async (ClothingShopContext context, LoginRequest request, IPasswordHasher<User> hasher) =>
+app.MapPost("/api/auth/login", async (ClothingShopContext context, LoginRequest request) =>
 {
     var user = await context.Users.Include(a => a.Role).FirstOrDefaultAsync(a => a.Login == request.Login);
 
-    if (user == null ||
-        string.IsNullOrWhiteSpace(request.Password))
+    if (user == null || string.IsNullOrWhiteSpace(request.Password))
         return Results.Challenge();
 
-    var result = hasher.VerifyHashedPassword(
-        user, user.PasswordHash, request.Password);
+    var result = hasher.VerifyHashedPassword(user, user.PasswordHash, request.Password);
 
     if (result == PasswordVerificationResult.Failed)
         return Results.Challenge();
@@ -170,6 +199,30 @@ app.MapPost("/api/auth/login", async (ClothingShopContext context, LoginRequest 
         access_token = CreateToken(user),
         token_type = "Bearer"
     });
+});
+
+//–егистраци€ пользовател€
+
+app.MapPost("/api/reg/registr", async (ClothingShopContext context, RegRequest request) =>
+{
+    var user = await context.Users.FirstOrDefaultAsync(u => u.Login == request.Login);
+    if (user != null) return Results.NotFound(new { message = "Ћогин зан€т" });
+
+    var newuser = new User
+    {
+        Login = request.Login,
+        PasswordHash = request.Password,
+        Phone = request.Phone,
+        DeliveryAddress = request.Address,
+        RoleId = 2,
+        Role = context.Roles.FirstOrDefault(r => r.Id==2)
+
+    };
+    newuser.PasswordHash = hasher.HashPassword(newuser, request.Password);
+    await context.Users.AddAsync(newuser);
+    context.SaveChanges();
+    return Results.Created($"/api/users/{newuser.Id}", newuser);
+
 }).AllowAnonymous();
 
 //изменить статус существующего заказа
@@ -193,10 +246,10 @@ app.MapPut("/api/orders/{id}/status", async (ClothingShopContext context, int id
         order.StatusId,
         order.UserId
     });
-});
+}).RequireAuthorization("Manager");
 
 //изменить количество товара определЄнного размера
-                 //order-items
+//order-items
 app.MapPut("/api/orderitems/{id}/quantity", async (ClothingShopContext context, int id, UpdateQuantity uq) =>
 {
     var item = await context.OrderItems.FirstOrDefaultAsync(i => i.Id == id);
@@ -217,7 +270,7 @@ app.MapPut("/api/orderitems/{id}/quantity", async (ClothingShopContext context, 
         item.Quantity,
         item.UnitPrice
     });
-});
+}).RequireAuthorization("Manager");
 
 //убрать товар из продажи
 
@@ -238,7 +291,7 @@ app.MapDelete("/api/closing/{id}", async (ClothingShopContext context, int id) =
         clothing.Name,
         clothing.IsAvailable
     });
-});
+}).RequireAuthorization("Manager");
 
 //вернуть товар в продажу;
 
@@ -260,7 +313,7 @@ app.MapPut("/api/clothing/{id}/restore", async (ClothingShopContext context, int
         clothing.Name,
         clothing.IsAvailable
     });
-});
+}).RequireAuthorization("Manager");
 
 app.Run();
 
